@@ -1,0 +1,5 @@
+test
+*.pyc
+filter_corpus.py
+results/*.xlsx
+/corpus_REDUCED.csv

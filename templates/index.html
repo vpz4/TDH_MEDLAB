@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="UTF-8">
+   <title>Tabular Data Harmonization (TDH)</title>
+</head>
+
+<body style="background-color:#19232d;">
+<div align="center">
+    <h1 style="color:white;font-family:Calibri;text-align:center">Welcome to the Tabular Data Harmonizer (TDH)</h3>
+   <h3 style="color:white;font-family:Calibri;text-align:center">Upload Required Files for Tabular Data Harmonization</h3>
+   <form method="post" enctype="multipart/form-data">
+       <label style="color:white;font-family:Calibri;text-align:center">Select an action:</label>
+       <select name="action" style="color:black;">
+           <option value="metadata_harmonization">Generate the metadata harmonization report</option>
+           <option value="final_harmonization">Apply the final harmonization process</option>
+       </select>
+       <br><br>
+       
+       <div id="metadata_inputs">
+           <label style="color:white;font-family:Calibri;text-align:center">Select the data quality evaluation report (.xlsx):</label>
+           <input type="file" name="report" style="color:white;" required>
+           <br><br>
+           
+           <label style="color:white;font-family:Calibri;text-align:center">Select the data model (.xml/.owl):</label>
+           <input type="file" name="xml" style="color:white;" required>
+           <br><br>
+       </div>
+       
+       <div id="harmonization_inputs" style="display:none;">
+           <label style="color:white;font-family:Calibri;text-align:center">Select the metadata harmonization report (.xlsx):</label>
+           <input type="file" name="harmonization_report" style="color:white;" required>
+           <br><br>
+           
+           <label style="color:white;font-family:Calibri;text-align:center">Select a tabular dataset for harmonization (.csv):</label>
+           <input type="file" name="dataset" style="color:white;" required>
+           <br><br>
+       </div>
+       
+       <input type="submit" value="Apply" style="margin-top: 25px; margin-bottom: 25px">
+   </form>
+
+    {% if success %}
+        <p style="color: rgb(13, 195, 25);font-family: Calibri">{{ message }}</p>
+        {% if harmonized_file %}
+            <a href="{{ url_for('download_file', filename=harmonized_file) }}" style="color:white;">Download File</a>
+        {% endif %}
+    {% elif message %}
+        <p style="color: red;font-family: Calibri">{{ message }}</p>
+    {% endif %}
+
+    <div style="display: flex; justify-content: center; align-items: center; font-family: Calibri;">
+        <p style="color: rgba(255, 255, 255, 0.79); margin-right: 10px;">Developed by</p>
+        <img src="{{ url_for('static', filename='images/MEDLAB.png') }}" width="50" height="80">
+    </div>
+</div>
+
+<script>
+    document.querySelector('select[name="action"]').addEventListener('change', function() {
+        console.log("Dropdown changed:", this.value);
+        if (this.value === "metadata_harmonization") {
+            document.getElementById('metadata_inputs').style.display = 'block';
+            document.getElementById('harmonization_inputs').style.display = 'none';
+        } else {
+            document.getElementById('metadata_inputs').style.display = 'none';
+            document.getElementById('harmonization_inputs').style.display = 'block';
+        }
+    });
+</script>
+</body>
+</html>
