@@ -126,6 +126,73 @@ def generate_harmonization_report(matching_results, input_filename):
     pd.DataFrame(matching_results).to_excel(file_path, index=False)
     return file_path
 
+def apply_final_transformation(dataset_file, harmonization_report_file):
+    print("✅ Applying final transformation...")
+
+    harmonization_df = pd.read_excel(harmonization_report_file)
+    harmonization_df = harmonization_df.dropna(subset=['Matched Term'])  # Keep only matched features
+    harmonization_df = harmonization_df[harmonization_df['Matched Term'] != "No match found"]
+
+    input_filename = os.path.splitext(dataset_file.filename)[0]
+    dataset_ext = os.path.splitext(dataset_file.filename)[-1].lower()
+    
+    if dataset_ext == ".csv":
+        dataset = pd.read_csv(dataset_file, encoding="utf-8")
+        print("✅ Successfully loaded dataset as CSV file.")
+    elif dataset_ext in [".xls", ".xlsx"]:
+        dataset = pd.read_excel(dataset_file)
+        print("✅ Successfully loaded dataset as Excel file.")
+    else:
+        print("❌ Unsupported dataset format:", dataset_ext)
+        return None, "Unsupported dataset format!"
+
+    transformed_dataset = dataset.copy()
+    columns_to_keep = []
+
+    for _, row in harmonization_df.iterrows():
+        original_name = row["Feature Name"]
+        matched_name = row["Matched Term"]
+        target_range = row.get("Target Value Range", "")
+
+        if original_name not in transformed_dataset.columns:
+            print(f"⚠️ Column {original_name} not found in dataset. Skipping.")
+            continue
+
+        transformed_dataset.rename(columns={original_name: matched_name}, inplace=True)
+        columns_to_keep.append(matched_name)
+
+        try:
+            # Convert value range strings to lists
+            value_range = eval(row["Value Range"]) if isinstance(row["Value Range"], str) else row["Value Range"]
+            target_value_range = eval(target_range) if isinstance(target_range, str) else target_range
+
+            if isinstance(value_range, list) and isinstance(target_value_range, list) and len(value_range) == len(target_value_range):
+                mapping_dict = {str(k): v for k, v in zip(value_range, target_value_range)}
+                
+                print(f"🔎 Mapping for {matched_name}: {mapping_dict}")
+
+                # Apply mapping only to non-missing values
+                mask = transformed_dataset[matched_name].notna()
+                transformed_dataset.loc[mask, matched_name] = transformed_dataset.loc[mask, matched_name].astype(str).map(mapping_dict)
+
+                print(f"Before mapping: {dataset[original_name].value_counts(dropna=False)}")
+                print(f"After mapping: {transformed_dataset[matched_name].value_counts(dropna=False)}")
+                print(f"✅ Transformed {matched_name} successfully.")
+
+            else:
+                print(f"⚠️ Skipping transformation for {matched_name} (Invalid Mapping)")
+        except Exception as e:
+            print(f"⚠️ Error transforming {matched_name}: {e}")
+            continue
+
+    transformed_dataset = transformed_dataset[columns_to_keep]
+    
+    transformed_filename = f"{input_filename}_harmonized_dataset.xlsx"
+    transformed_path = os.path.join(app.config['RESULTS_FOLDER'], transformed_filename)
+    transformed_dataset.to_excel(transformed_path, index=False)
+    print(f"✅ Final harmonized dataset saved: {transformed_path}")
+    return transformed_filename, "Final harmonization completed successfully!"
+
 @app.route('/main', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
@@ -138,17 +205,23 @@ def index():
             print("❌ No action received!")
             return render_template('index.html', success=False, message="No action selected!")
 
-        report_file = request.files.get('report')
-        xml_file = request.files.get('xml')
-
         if action == "metadata_harmonization":
+            report_file = request.files.get('report')
+            xml_file = request.files.get('xml')
+
             if not report_file or not xml_file:
                 print("❌ Missing required files for metadata harmonization!")
                 return render_template('index.html', success=False, message="Missing required files!")
 
             print("✅ Processing metadata harmonization...")
-            metadata = extract_metadata_from_report(report_file)
-            semantic_knowledge, child_to_parent_map = extract_semantic_knowledge_from_xml(xml_file)
+
+            report_path = os.path.join(app.config['RESULTS_FOLDER'], report_file.filename)
+            xml_path = os.path.join(app.config['RESULTS_FOLDER'], xml_file.filename)
+            report_file.save(report_path)
+            xml_file.save(xml_path)
+
+            metadata = extract_metadata_from_report(report_path)
+            semantic_knowledge, child_to_parent_map = extract_semantic_knowledge_from_xml(xml_path)
             corpus_mapping = load_corpus()
 
             terminology_dict = {term['tag']: {'synonyms': [], 'subclasses': []} for term in semantic_knowledge}
@@ -160,11 +233,20 @@ def index():
             print("✅ Metadata harmonization completed!")
             return render_template('index.html', success=True, message='Metadata harmonization report generated!', harmonized_file=harmonization_report_path)
 
-    return render_template('index.html')
 
-@app.route('/download/<filename>')
-def download_file(filename):
-    return send_from_directory(app.config['RESULTS_FOLDER'], filename)
+        elif action == "final_harmonization":
+            harmonization_report_file = request.files.get('harmonization_report')
+            dataset_file = request.files.get('dataset')
+
+            if not harmonization_report_file or not dataset_file:
+                print("❌ Missing required files for final harmonization!")
+                return render_template('index.html', success=False, message="Missing required files!")
+
+            print("✅ Processing final harmonization...")
+            transformed_file, message = apply_final_transformation(dataset_file, harmonization_report_file)
+            return render_template('index.html', success=True, message=message)
+
+    return render_template('index.html')
 
 if __name__ == "__main__":
     app.run(debug=True)
