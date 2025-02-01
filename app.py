@@ -3,7 +3,6 @@ import os
 import pandas as pd
 import xml.etree.ElementTree as ET
 import nltk
-import sys
 from nltk.corpus import wordnet
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -29,48 +28,95 @@ def extract_semantic_knowledge_from_xml(xml_path):
     print("Extracting semantic knowledge from XML...")
     tree = ET.parse(xml_path)
     root = tree.getroot()
-    return [{'tag': elem.tag.lower(), 'attributes': elem.attrib, 'source': 'XML'} for elem in root.iter() if elem.tag != root.tag]
+    child_to_parent_map = {}
 
-def load_and_enrich_corpus():
-    print("Loading and enriching hardcoded vocabulary corpus...")
+    for elem in root.iter():
+        for child in elem:
+            child_to_parent_map[child.tag.lower()] = elem.tag.lower()
+
+    return [{'tag': elem.tag.lower(), 'attributes': elem.attrib} for elem in root.iter()], child_to_parent_map
+
+def load_corpus():
+    print("Loading vocabulary corpus...")
     corpus_df = pd.read_csv(CORPUS_PATH, dtype=str, low_memory=False)
-    enriched_corpus = []
-    for _, row in corpus_df.iterrows():
-        term = str(row.get("concept_name", ""))
-        concept_id = str(row.get("concept_id", "Unknown"))
-        source = str(row.get("vocabulary_id", "Corpus"))
-        synonyms = set(lemma.name() for syn in wordnet.synsets(term) for lemma in syn.lemmas())
-        enriched_corpus.append({'term': term, 'synonyms': list(synonyms), 'id': concept_id, 'source': source})
-    return enriched_corpus
+    corpus_mapping = {row["concept_name"].lower(): {"id": row["concept_id"], "name": row["concept_name"]}
+                      for _, row in corpus_df.iterrows() if pd.notna(row["concept_name"])}
+    return corpus_mapping
 
-def perform_matching(metadata, enriched_corpus, semantic_knowledge):
+def perform_matching(metadata, terminology_dict, child_to_parent_map, corpus_mapping):
     print("Performing lexical and semantic matching...")
     vectorizer = TfidfVectorizer()
     matching_results = []
-    xml_terms = {item['tag']: item for item in semantic_knowledge}
+    similarity_threshold = 0.5  
 
     for feature in metadata:
         feature_name = feature['Feature Name'].lower()
+        value_range = feature['Value Range']
         best_match = None
-        best_score = 0
+        best_score = similarity_threshold  
+        parent_name = "N/A"
 
-        for xml_term, xml_data in xml_terms.items():
-            score = max(fuzz.ratio(feature_name, xml_term), fuzz.WRatio(feature_name, xml_term)) / 100
-            if score > best_score:
-                best_match = {'Feature Name': feature['Feature Name'], 'Matched Term': xml_term, 'Matching Score': score, 'Source': 'XML'}
-                best_score = score
+        print(f"\nProcessing feature: {feature_name}")
 
-        tfidf_matrix = vectorizer.fit_transform([feature_name] + [item['term'] for item in enriched_corpus])
+        # Step 1: Check for Exact Match in XML Terminology
+        for term, data in terminology_dict.items():
+            term_variants = [term] + data['synonyms'] + data['subclasses']
+            if feature_name in term_variants:
+                print(f"✅ Exact match found: {feature_name} -> {term} (Source: XML)")
+                parent_name = child_to_parent_map.get(term, "No Parent")
+                best_match = {
+                    'Feature Name': feature['Feature Name'],
+                    'Matched Term': term,
+                    'Matching Score': 1.0,
+                    'Value Range': value_range,
+                    'Source': 'XML',
+                    'Parent Term': parent_name
+                }
+                matching_results.append(best_match)
+                print(f"✅ Stored exact match: {best_match}")
+                break
+
+        if best_match:
+            continue
+
+        # Step 2: Apply similarity-based matching
+        corpus_terms = list(corpus_mapping.keys())
+        tfidf_matrix = vectorizer.fit_transform([feature_name] + corpus_terms)
         similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:]).flatten()
 
         for i, score in enumerate(similarities):
             if score > best_score:
-                best_match = {'Feature Name': feature['Feature Name'], 'Matched Term': enriched_corpus[i]['term'], 'Matching Score': score, 'Source': enriched_corpus[i]['source'], 'Reference ID': enriched_corpus[i]['id']}
+                matched_corpus_term = corpus_terms[i]
+                mapped_xml_info = corpus_mapping.get(matched_corpus_term, {"id": "Unknown", "name": "Unknown"})
+                matched_xml_term = mapped_xml_info['name'] if mapped_xml_info['name'] != "Unknown" else matched_corpus_term
+                best_match = {
+                    'Feature Name': feature['Feature Name'],
+                    'Matched Term': matched_xml_term,
+                    'Matching Score': score,
+                    'Value Range': value_range,
+                    'Source': 'Corpus -> XML',
+                    'Concept ID': mapped_xml_info['id']
+                }
+                parent_name = child_to_parent_map.get(matched_xml_term, "No Parent")
+                best_match['Parent Term'] = parent_name
                 best_score = score
 
         if best_match:
             matching_results.append(best_match)
-    
+            print(f"✅ Stored match: {best_match}")
+        else:
+            no_match_entry = {
+                'Feature Name': feature['Feature Name'],
+                'Matched Term': "No match found",
+                'Matching Score': 0,
+                'Value Range': value_range,
+                'Source': 'N/A',
+                'Concept ID': 'N/A',
+                'Parent Term': "N/A"
+            }
+            matching_results.append(no_match_entry)
+            print(f"❌ No match found, storing: {no_match_entry}")
+
     return matching_results
 
 def generate_harmonization_report(matching_results, input_filename):
@@ -80,40 +126,40 @@ def generate_harmonization_report(matching_results, input_filename):
     pd.DataFrame(matching_results).to_excel(file_path, index=False)
     return file_path
 
-def apply_final_harmonization(input_dataset_path, harmonization_report_path):
-    print("Applying final harmonization to dataset...")
-    dataset = pd.read_csv(input_dataset_path)
-    harmonization_df = pd.read_excel(harmonization_report_path)
-    rename_mapping = {row['Feature Name']: row['Matched Term'] for _, row in harmonization_df.iterrows() if row['Feature Name'] in dataset.columns}
-    dataset.rename(columns=rename_mapping, inplace=True)
-    output_harmonized_path = os.path.splitext(input_dataset_path)[0] + "_harmonized.csv"
-    dataset.to_csv(output_harmonized_path, index=False)
-    return output_harmonized_path
-
 @app.route('/main', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
+        print("🔹 Received POST request!")
+
         action = request.form.get('action')
         print("User selected:", action)
-        
+
+        if not action:
+            print("❌ No action received!")
+            return render_template('index.html', success=False, message="No action selected!")
+
+        report_file = request.files.get('report')
+        xml_file = request.files.get('xml')
+
         if action == "metadata_harmonization":
-            report_file = request.files['report']
-            xml_file = request.files['xml']
+            if not report_file or not xml_file:
+                print("❌ Missing required files for metadata harmonization!")
+                return render_template('index.html', success=False, message="Missing required files!")
+
+            print("✅ Processing metadata harmonization...")
             metadata = extract_metadata_from_report(report_file)
-            semantic_knowledge = extract_semantic_knowledge_from_xml(xml_file)
-            enriched_corpus = load_and_enrich_corpus()
+            semantic_knowledge, child_to_parent_map = extract_semantic_knowledge_from_xml(xml_file)
+            corpus_mapping = load_corpus()
+
+            terminology_dict = {term['tag']: {'synonyms': [], 'subclasses': []} for term in semantic_knowledge}
+
             input_filename = os.path.splitext(os.path.basename(report_file.filename))[0]
-            matching_results = perform_matching(metadata, enriched_corpus, semantic_knowledge)
+            matching_results = perform_matching(metadata, terminology_dict, child_to_parent_map, corpus_mapping)
             harmonization_report_path = generate_harmonization_report(matching_results, input_filename)
-            sys.stdout.flush()
+
+            print("✅ Metadata harmonization completed!")
             return render_template('index.html', success=True, message='Metadata harmonization report generated!', harmonized_file=harmonization_report_path)
-        
-        elif action == "final_harmonization":
-            harmonization_report_file = request.files['harmonization_report']
-            dataset_file = request.files['dataset']
-            harmonized_dataset_path = apply_final_harmonization(dataset_file, harmonization_report_file)
-            return render_template('index.html', success=True, message='Final harmonization applied!', harmonized_file=harmonized_dataset_path)
-    
+
     return render_template('index.html')
 
 @app.route('/download/<filename>')

@@ -7,16 +7,16 @@
 
 <body style="background-color:#19232d;">
 <div align="center">
-    <h1 style="color:white;font-family:Calibri;text-align:center">Welcome to the Tabular Data Harmonizer (TDH)</h3>
+    <h1 style="color:white;font-family:Calibri;text-align:center">Welcome to the Tabular Data Harmonizer (TDH)</h1>
    <h3 style="color:white;font-family:Calibri;text-align:center">Upload Required Files for Tabular Data Harmonization</h3>
-   <form method="post" enctype="multipart/form-data">
+   <form method="post" action="/main" enctype="multipart/form-data" id="tdh-form">
        <label style="color:white;font-family:Calibri;text-align:center">Select an action:</label>
-       <select name="action" style="color:black;">
+       <select name="action" style="color:black;" id="action-select">
            <option value="metadata_harmonization">Generate the metadata harmonization report</option>
            <option value="final_harmonization">Apply the final harmonization process</option>
        </select>
        <br><br>
-       
+
        <div id="metadata_inputs">
            <label style="color:white;font-family:Calibri;text-align:center">Select the data quality evaluation report (.xlsx):</label>
            <input type="file" name="report" style="color:white;" required>
@@ -56,16 +56,40 @@
 </div>
 
 <script>
-    document.querySelector('select[name="action"]').addEventListener('change', function() {
-        console.log("Dropdown changed:", this.value);
-        if (this.value === "metadata_harmonization") {
-            document.getElementById('metadata_inputs').style.display = 'block';
-            document.getElementById('harmonization_inputs').style.display = 'none';
-        } else {
-            document.getElementById('metadata_inputs').style.display = 'none';
-            document.getElementById('harmonization_inputs').style.display = 'block';
-        }
+    document.addEventListener("DOMContentLoaded", function() {
+        console.log("✅ Page loaded! JavaScript is running.");
+    });
+
+    document.querySelector("#tdh-form").addEventListener("submit", function(event) {
+        event.preventDefault();  // Prevent default form submission
+
+        console.log("🔹 Form submitted! Sending request...");
+        let formData = new FormData(this);
+
+        fetch("/main", {
+            method: "POST",
+            body: formData
+        })
+        .then(response => response.text())
+        .then(data => {
+            console.log("✅ Server Response:", data);
+            alert("Form submitted successfully!");
+        })
+        .catch(error => console.error("❌ Error:", error));
+    });
+
+    document.querySelector('input[type="submit"]').addEventListener('click', function(event) {
+        console.log("✅ Submit button clicked!");
+        document.querySelector("#tdh-form").submit();  // Force form submission
+    });
+
+    document.querySelector("#action-select").addEventListener("change", function() {
+        console.log("🔹 Dropdown changed:", this.value);
+        document.getElementById("metadata_inputs").style.display = this.value === "metadata_harmonization" ? "block" : "none";
+        document.getElementById("harmonization_inputs").style.display = this.value === "final_harmonization" ? "block" : "none";
     });
 </script>
+
+
 </body>
 </html>
