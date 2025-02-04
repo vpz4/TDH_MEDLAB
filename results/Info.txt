@@ -1,0 +1,2 @@
+This is a file that is needed by the server to store the generated reports.
+Do not delete this folder.
