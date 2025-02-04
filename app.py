@@ -1,13 +1,10 @@
 from flask import Flask, request, render_template
 import os
-import sys
 import pandas as pd
 import xml.etree.ElementTree as ET
 import nltk
-from nltk.corpus import wordnet
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
-from rapidfuzz import fuzz
 
 # Ensure NLTK resources are downloaded
 nltk.download('wordnet')
@@ -198,7 +195,6 @@ def apply_final_transformation(dataset_file, harmonization_report_file):
 def index():
     if request.method == 'POST':
         print("🔹 Received POST request!")
-        # sys.stdout.flush()
 
         action = request.form.get('action')
         print("User selected:", action)
