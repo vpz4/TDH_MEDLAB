@@ -48,7 +48,7 @@ Access the web interface at `http://127.0.0.1:5000/main`
 ### Build and Run the Container
 ```bash
 docker build -t tdh_medlab-app .
-docker run -d -p 5000:5000 -v C/TDH/results:/app/results --name tdh_medlab-app tdh_medlab-app
+docker run -d -p 5000:5000 -v C/TDH_MEDLAB/results:/app/results --name tdh_medlab-app tdh_medlab-app
 ```
 ### Access the Application
 Navigate to `http://127.0.0.1:5000/main`
