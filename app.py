@@ -198,10 +198,11 @@ def apply_final_transformation(dataset_file, harmonization_report_file):
 def index():
     if request.method == 'POST':
         print("🔹 Received POST request!")
+        # sys.stdout.flush()
 
         action = request.form.get('action')
         print("User selected:", action)
-
+        
         if not action:
             print("❌ No action received!")
             return render_template('index.html', success=False, message="No action selected!")
@@ -215,7 +216,7 @@ def index():
                 return render_template('index.html', success=False, message="Missing required files!")
 
             print("✅ Processing metadata harmonization...")
-
+            
             # Read the report file directly (without saving)
             metadata = extract_metadata_from_report(report_file)
 
@@ -233,7 +234,7 @@ def index():
             harmonization_report_path = generate_harmonization_report(matching_results, input_filename)
 
             print("✅ Metadata harmonization completed!")
-            sys.stdout.flush()
+            
             return render_template('index.html', success=True, message='Metadata harmonization report generated!', harmonized_file=harmonization_report_path)
 
         elif action == "final_harmonization":
@@ -245,13 +246,13 @@ def index():
                 return render_template('index.html', success=False, message="Missing required files!")
 
             print("✅ Processing final harmonization...")
-            sys.stdout.flush()
+            
 
             # Process files directly from memory without saving
             transformed_file, message = apply_final_transformation(dataset_file, harmonization_report_file)
 
             return render_template('index.html', success=True, message=message)
-
+    
     return render_template('index.html')
 
 if __name__ == "__main__":
