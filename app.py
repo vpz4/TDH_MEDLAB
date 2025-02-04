@@ -1,5 +1,6 @@
 from flask import Flask, request, render_template
 import os
+import sys
 import pandas as pd
 import xml.etree.ElementTree as ET
 import nltk
@@ -215,24 +216,25 @@ def index():
 
             print("✅ Processing metadata harmonization...")
 
-            report_path = os.path.join(app.config['RESULTS_FOLDER'], report_file.filename)
-            xml_path = os.path.join(app.config['RESULTS_FOLDER'], xml_file.filename)
-            report_file.save(report_path)
-            xml_file.save(xml_path)
+            # Read the report file directly (without saving)
+            metadata = extract_metadata_from_report(report_file)
 
-            metadata = extract_metadata_from_report(report_path)
-            semantic_knowledge, child_to_parent_map = extract_semantic_knowledge_from_xml(xml_path)
+            # Parse XML directly from file object
+            semantic_knowledge, child_to_parent_map = extract_semantic_knowledge_from_xml(xml_file)
+
             corpus_mapping = load_corpus()
 
             terminology_dict = {term['tag']: {'synonyms': [], 'subclasses': []} for term in semantic_knowledge}
 
-            input_filename = os.path.splitext(os.path.basename(report_file.filename))[0]
+            input_filename = os.path.splitext(report_file.filename)[0]
             matching_results = perform_matching(metadata, terminology_dict, child_to_parent_map, corpus_mapping)
+
+            # Generate harmonization report & return file path
             harmonization_report_path = generate_harmonization_report(matching_results, input_filename)
 
             print("✅ Metadata harmonization completed!")
+            sys.stdout.flush()
             return render_template('index.html', success=True, message='Metadata harmonization report generated!', harmonized_file=harmonization_report_path)
-
 
         elif action == "final_harmonization":
             harmonization_report_file = request.files.get('harmonization_report')
@@ -243,7 +245,11 @@ def index():
                 return render_template('index.html', success=False, message="Missing required files!")
 
             print("✅ Processing final harmonization...")
+            sys.stdout.flush()
+
+            # Process files directly from memory without saving
             transformed_file, message = apply_final_transformation(dataset_file, harmonization_report_file)
+
             return render_template('index.html', success=True, message=message)
 
     return render_template('index.html')
